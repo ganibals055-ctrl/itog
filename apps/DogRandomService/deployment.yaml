@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-dog-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-dog-service
+  template:
+    metadata:
+      labels:
+        app: java-dog-service
+    spec:
+      containers:
+      - name: java-dog-service
+        image: localhost:19092/java-dog-service:latest  # Тот самый образ из Nexus!
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_HOST
+          value: "postgres"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-dog-service
+spec:
+  selector:
+    app: java-dog-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: LoadBalancer  # Чтобы был доступ снаружи

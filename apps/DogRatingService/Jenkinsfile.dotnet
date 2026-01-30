@@ -1,0 +1,34 @@
+// Пайплайн для .NET сервиса (оценки)
+pipeline {
+    agent any
+    stages {
+        stage('Checkout SCM') {
+            steps { echo '📥 Клонирую код .NET сервиса' }
+        }
+        stage('Docker Build') {
+            steps {
+                echo '🐳 Собираю Docker образ .NET сервиса'
+                sh 'docker build -t localhost:19092/dotnet-rating-service:latest .'
+            }
+        }
+        stage('Push to Nexus') {
+            steps {
+                echo '📤 Отправляю образ в Nexus'
+                sh '''
+                  docker login localhost:19092 -u admin -p admin123
+                  docker push localhost:19092/dotnet-rating-service:latest
+                '''
+            }
+        }
+        stage('Deploy to K8s') {
+            steps {
+                echo '🚀 Деплою в Kubernetes'
+                sh 'echo "kubectl apply -f deployment.yaml"'
+            }
+        }
+    }
+    post { 
+        always { echo '🧹 Очищаю workspace' }
+        success { echo '✅ .NET ПАЙПЛАЙН ВЫПОЛНЕН!' }
+    }
+}

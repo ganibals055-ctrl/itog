@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <title>Doggo UI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body { text-align: center; }
+        .media-block {
+            max-width: 500px;
+            margin: 10px auto;
+        }
+        .media-block img,
+        .media-block video {
+            max-width: 100%;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- HEADER -->
+<nav class="navbar navbar-expand-lg bg-primary navbar-dark px-3">
+    <div class="container-fluid justify-content-between">
+        <a class="navbar-brand" href="#">🐶 Doggo UI</a>
+
+        <button id="themeToggle" class="btn btn-light">
+            🌙 Dark
+        </button>
+    </div>
+</nav>
+
+<div class="container py-4">
+
+    <!-- RANDOM DOG -->
+    <div class="card mb-4 mx-auto" style="max-width: 600px;">
+        <div class="card-header"><h4>Random Dog</h4></div>
+
+        <div class="card-body">
+            <button class="btn btn-primary mb-3" onclick="loadRandomDog()">Load Random Dog</button>
+            <div id="randomDogResult"></div>
+
+            <div id="randomDogActions" style="display: none;">
+                <hr>
+
+                <h5>Add Rating</h5>
+                <div class="input-group mb-3">
+                    <input id="randomRatingInput" type="number" min="1" max="5" class="form-control" placeholder="Rate 1–5">
+                    <button class="btn btn-success" onclick="rateRandomDog()">Send</button>
+                </div>
+
+                <h5>Add Comment</h5>
+                <div class="input-group mb-3">
+                    <input id="randomCommentInput" class="form-control" placeholder="Your comment">
+                    <button class="btn btn-success" onclick="commentRandomDog()">Send</button>
+                </div>
+
+                <div id="randomDogRatingInfo"></div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- DOG DETAILS -->
+    <div class="card mx-auto" style="max-width: 600px;">
+        <div class="card-header"><h4>Find Dog by ID</h4></div>
+        <div class="card-body">
+
+            <input id="dogIdInput" class="form-control mb-3" placeholder="Enter Dog ID">
+            <button class="btn btn-secondary mb-3" onclick="loadDog()">Load Dog</button>
+
+            <div id="dogDetails"></div>
+
+        </div>
+    </div>
+</div>
+
+
+<script>
+    let lastRandomDogId = null;
+    const API = "http://192.168.49.2:30000";
+
+    // =============================
+    // THEME TOGGLE
+    // =============================
+    const themeBtn = document.getElementById("themeToggle");
+    const root = document.documentElement;
+
+    function applyTheme(theme) {
+        root.setAttribute("data-bs-theme", theme);
+        themeBtn.textContent = (theme === "light") ? "🌙 Dark" : "☀️ Light";
+        localStorage.setItem("theme", theme);
+    }
+
+    themeBtn.onclick = () => {
+        const newTheme = (root.getAttribute("data-bs-theme") === "light") ? "dark" : "light";
+        applyTheme(newTheme);
+    };
+
+    // Load saved theme
+    applyTheme(localStorage.getItem("theme") || "light");
+
+    // =============================
+    // MEDIA RENDERING
+    // =============================
+    function renderMedia(url) {
+        const lower = url.toLowerCase();
+
+        if (lower.endsWith(".mp4")) {
+            return `
+                <video controls class="media-block">
+                    <source src="${url}" type="video/mp4">
+                </video>`;
+        }
+
+        // gif, png, jpg, jpeg, webp — все как <img>
+        return `<img src="${url}" class="media-block">`;
+    }
+
+    // =============================
+    // RANDOM DOG
+    // =============================
+    function loadRandomDog() {
+        fetch("/dog/random")
+            .then(r => r.json())
+            .then(dog => {
+                lastRandomDogId = dog.id;
+
+                document.getElementById("randomDogResult").innerHTML = `
+                    <h5>Dog #${dog.id}</h5>
+                    ${renderMedia(dog.url)}
+                    <p><b>Size:</b> ${dog.sizeBytes} bytes</p>
+                `;
+
+                document.getElementById("randomDogActions").style.display = "block";
+                updateRandomDogRatingInfo();
+            });
+    }
+
+    function rateRandomDog() {
+        let value = Number(document.getElementById("randomRatingInput").value);
+
+        if (isNaN(value) || value < 1 || value > 5) {
+            document.getElementById("randomDogRatingInfo").innerHTML = `
+                <div class="alert alert-danger">Rating must be between 1 and 5.</div>
+            `;
+            return;
+        }
+
+        fetch(`${API}/ratings/${lastRandomDogId}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({value})
+        }).then(updateRandomDogRatingInfo);
+    }
+
+    function commentRandomDog() {
+        let text = document.getElementById("randomCommentInput").value;
+
+        if (!text.trim()) {
+            document.getElementById("randomDogRatingInfo").innerHTML = `
+                <div class="alert alert-danger">Comment cannot be empty.</div>
+            `;
+            return;
+        }
+
+        fetch(`${API}/comments/${lastRandomDogId}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({text})
+        }).then(updateRandomDogRatingInfo);
+    }
+
+    function updateRandomDogRatingInfo() {
+        Promise.all([
+            fetch(`${API}/ratings/${lastRandomDogId}/avg`).then(r => r.json()),
+            fetch(`${API}/comments/${lastRandomDogId}`).then(r => r.json())
+        ]).then(([avg, comments]) => {
+
+            const commentsHtml =
+                comments.length === 0
+                    ? `<div class="text-muted">No comments yet</div>`
+                    : comments
+                        .slice(0, 5)
+                        .map(c => `<div>💬 ${c.text}</div>`)
+                        .join("");
+
+            document.getElementById("randomDogRatingInfo").innerHTML = `
+                <h5>Average Rating: ⭐ ${Number(avg.avg).toFixed(2)}</h5>
+                <h6>Recent Comments:</h6>
+                ${commentsHtml}
+            `;
+        });
+    }
+
+    // =============================
+    // DOG BY ID
+    // =============================
+    function loadDog() {
+        let id = document.getElementById("dogIdInput").value;
+        if (!id) return;
+
+        fetch(`/dog/${id}`)
+            .then(r => r.json())
+            .then(dog => {
+                document.getElementById("dogDetails").innerHTML = `
+                    <h4>Dog #${dog.id}</h4>
+                    ${renderMedia(dog.url)}
+                    <p><b>Size:</b> ${dog.sizeBytes} bytes</p>
+
+                    <hr>
+                    <h4>Ratings</h4>
+                    <div id="ratingList"></div>
+                    <div class="input-group mb-3">
+                        <input id="ratingInput" type="number" min="1" max="5" class="form-control" placeholder="Rate 1–5">
+                        <button class="btn btn-primary" onclick="addRating(${dog.id})">Add Rating</button>
+                    </div>
+
+                    <h4>Comments</h4>
+                    <div id="commentList"></div>
+                    <div class="input-group">
+                        <input id="commentInput" class="form-control" placeholder="Add a comment">
+                        <button class="btn btn-primary" onclick="addComment(${dog.id})">Add Comment</button>
+                    </div>
+                `;
+
+                loadRatings(id);
+                loadComments(id);
+            });
+    }
+
+    // =============================
+    // RATINGS
+    // =============================
+    function loadRatings(id) {
+        fetch(`${API}/ratings/${id}`)
+            .then(r => r.json())
+            .then(list => {
+                document.getElementById("ratingList").innerHTML =
+                    list.map(r => `<div>⭐ ${r.value} — ${new Date(r.createdAt).toLocaleString()}</div>`).join("");
+            });
+    }
+
+    function addRating(id) {
+        let value = Number(document.getElementById("ratingInput").value);
+
+        if (isNaN(value) || value < 1 || value > 5) {
+            document.getElementById("ratingList").innerHTML =
+                `<div class="alert alert-danger">Rating must be between 1 and 5.</div>`;
+            return;
+        }
+
+        fetch(`${API}/ratings/${id}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({value})
+        }).then(() => loadRatings(id));
+    }
+
+    // =============================
+    // COMMENTS
+    // =============================
+    function loadComments(id) {
+        fetch(`${API}/comments/${id}`)
+            .then(r => r.json())
+            .then(list => {
+                if (list.length === 0) {
+                    document.getElementById("commentList").innerHTML =
+                        `<div class="text-muted">No comments yet</div>`;
+                    return;
+                }
+
+                document.getElementById("commentList").innerHTML =
+                    list.map(c => `<div>💬 ${c.text} — ${new Date(c.createdAt).toLocaleString()}</div>`).join("");
+            });
+    }
+
+    function addComment(id) {
+        let text = document.getElementById("commentInput").value;
+
+        if (!text.trim()) {
+            document.getElementById("commentList").innerHTML =
+                `<div class="alert alert-danger">Comment cannot be empty.</div>`;
+            return;
+        }
+
+        fetch(`${API}/comments/${id}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({text})
+        }).then(() => loadComments(id));
+    }
+</script>
+
+</body>
+</html>

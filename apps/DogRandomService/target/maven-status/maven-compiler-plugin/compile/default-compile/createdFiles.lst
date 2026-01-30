@@ -1,0 +1,10 @@
+com\example\doggo\DoggoApplication.class
+com\example\doggo\model\Doggo.class
+com\example\doggo\model\DoggoHistory$DoggoHistoryBuilder.class
+com\example\doggo\controller\DogController.class
+com\example\doggo\repository\DoggoRepository.class
+com\example\doggo\repository\DoggoHistoryRepository.class
+com\example\doggo\model\Doggo$DoggoBuilder.class
+com\example\doggo\controller\ResourceNotFoundException.class
+com\example\doggo\service\RemoteDogService.class
+com\example\doggo\model\DoggoHistory.class

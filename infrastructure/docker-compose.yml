@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # 1. Jenkins (для сборки)
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11
+    container_name: demo-jenkins
+    ports:
+      - "19090:8080"                    # Jenkins UI
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock  # Ключ! Jenkins может собирать образы
+      - ./jenkins-pass.txt:/tmp/jenkins-pass.txt   # Пароль для удобства
+    environment:
+      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"
+    command: >
+      sh -c "
+        echo 'admin' > /tmp/jenkins-pass.txt &&
+        /usr/local/bin/jenkins.sh
+      "
+
+  # 2. Nexus (хранилище образов)
+  nexus:
+    image: sonatype/nexus3:latest
+    container_name: demo-nexus
+    ports:
+      - "19091:8081"                    # Nexus UI
+      - "19092:8082"                    # Docker Registry
+    environment:
+      NEXUS_SECURITY_RANDOMPASSWORD: "false"
+    volumes:
+      - nexus_data:/nexus-data
+    command: >
+      sh -c "
+        echo 'admin123' > /nexus-data/admin.password &&
+        /opt/sonatype/nexus/bin/nexus run
+      "
+
+  # 3. База данных (для работы приложений)
+  postgres:
+    image: postgres:15-alpine
+    container_name: demo-postgres
+    environment:
+      POSTGRES_DB: dogdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "6894:5432"
+
+  # 4. Minikube в Docker (упрощённый вариант)
+  k3d:  # Лёгкий Kubernetes
+    image: rancher/k3s:latest
+    container_name: demo-k8s
+    privileged: true
+    command: server --disable=traefik --disable=metrics-server
+
+volumes:
+  jenkins_data:
+  nexus_data:

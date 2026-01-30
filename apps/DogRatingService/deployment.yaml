@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dotnet-rating-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dotnet-rating-service
+  template:
+    metadata:
+      labels:
+        app: dotnet-rating-service
+    spec:
+      containers:
+      - name: dotnet-rating-service
+        image: localhost:19092/dotnet-rating-service:latest  # Образ из Nexus!
+        ports:
+        - containerPort: 80
+        env:
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres;Database=dogdb;Username=postgres;Password=postgres"
+        - name: JavaServiceUrl
+          value: "http://java-dog-service:8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dotnet-rating-service
+spec:
+  selector:
+    app: dotnet-rating-service
+  ports:
+  - port: 8081
+    targetPort: 80
+  type: LoadBalancer
