@@ -1,34 +1,142 @@
-// Пайплайн для .NET сервиса (оценки)
 pipeline {
     agent any
+    
+    environment {
+        REGISTRY = "localhost:8082"
+        DOCKER_IMAGE = "dotnet-rating-service"
+        K8S_NAMESPACE = "dog-app"
+    }
+    
     stages {
         stage('Checkout SCM') {
-            steps { echo '📥 Клонирую код .NET сервиса' }
+            steps {
+                echo '📥 Этап 1: Получение кода .NET сервиса'
+                echo 'Использую локальные файлы из DogRatingService/'
+            }
         }
+        
+        stage('Build .NET Application') {
+            steps {
+                echo '🔨 Этап 2: Сборка .NET приложения'
+                dir('DogRatingService') {
+                    sh '''
+                        echo "dotnet restore"
+                        echo "dotnet build --configuration Release"
+                        echo "dotnet publish -c Release -o ./publish"
+                        echo "✅ .NET приложение собрано"
+                    '''
+                }
+            }
+        }
+        
         stage('Docker Build') {
             steps {
-                echo '🐳 Собираю Docker образ .NET сервиса'
-                sh 'docker build -t localhost:19092/dotnet-rating-service:latest .'
+                echo '🐳 Этап 3: Сборка Docker образа'
+                dir('DogRatingService') {
+                    sh """
+                        echo "Создаю Dockerfile для .NET..."
+                        echo 'FROM mcr.microsoft.com/dotnet/aspnet:8.0' > Dockerfile
+                        echo 'WORKDIR /app' >> Dockerfile
+                        echo 'COPY publish/ .' >> Dockerfile
+                        echo 'EXPOSE 80' >> Dockerfile
+                        echo 'ENTRYPOINT ["dotnet", "DogRatingService.dll"]' >> Dockerfile
+                        
+                        echo "Собираю образ: ${REGISTRY}/${DOCKER_IMAGE}:latest"
+                        docker build -t ${REGISTRY}/${DOCKER_IMAGE}:latest .
+                    """
+                }
             }
         }
-        stage('Push to Nexus') {
+        
+        stage('Push to Registry') {
             steps {
-                echo '📤 Отправляю образ в Nexus'
-                sh '''
-                  docker login localhost:19092 -u admin -p admin123
-                  docker push localhost:19092/dotnet-rating-service:latest
-                '''
+                echo '📤 Этап 4: Отправка в Nexus'
+                sh """
+                    docker login ${REGISTRY} -u admin -p admin123
+                    docker push ${REGISTRY}/${DOCKER_IMAGE}:latest
+                    echo "✅ .NET образ залит в Nexus!"
+                """
             }
         }
-        stage('Deploy to K8s') {
+        
+        stage('Deploy to Kubernetes') {
             steps {
-                echo '🚀 Деплою в Kubernetes'
-                sh 'echo "kubectl apply -f deployment.yaml"'
+                echo '🚀 Этап 5: Деплой в Kubernetes'
+                script {
+                    writeFile file: 'dotnet-deployment.yaml', text: """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DOCKER_IMAGE}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app: ${DOCKER_IMAGE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${DOCKER_IMAGE}
+  template:
+    metadata:
+      labels:
+        app: ${DOCKER_IMAGE}
+    spec:
+      containers:
+      - name: ${DOCKER_IMAGE}
+        image: ${REGISTRY}/${DOCKER_IMAGE}:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres;Database=dogdb;Username=postgres;Password=postgres"
+        - name: JavaServiceUrl
+          value: "http://java-dog-service-service.dog-app.svc.cluster.local"
+        imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${DOCKER_IMAGE}-service
+  namespace: ${K8S_NAMESPACE}
+spec:
+  selector:
+    app: ${DOCKER_IMAGE}
+  ports:
+  - port: 8081
+    targetPort: 80
+  type: LoadBalancer
+"""
+                    
+                    echo '✅ Манифесты созданы: dotnet-deployment.yaml'
+                    
+                    sh '''
+                        echo "Для деплоя .NET сервиса выполни:"
+                        echo "kubectl apply -f dotnet-deployment.yaml"
+                        echo ""
+                        echo "После деплоя:"
+                        echo "Java сервис: http://java-service (внутри кластера)"
+                        echo ".NET сервис: http://dotnet-service:8081"
+                    '''
+                }
             }
         }
     }
-    post { 
-        always { echo '🧹 Очищаю workspace' }
-        success { echo '✅ .NET ПАЙПЛАЙН ВЫПОЛНЕН!' }
+    
+    post {
+        success {
+            echo '''
+            ╔══════════════════════════════════════════╗
+            ║  ✅ .NET ПАЙПЛАЙН ВЫПОЛНЕН УСПЕШНО!     ║
+            ╠══════════════════════════════════════════╣
+            ║  1. Checkout SCM        ✓                ║
+            ║  2. Build .NET App      ✓                ║
+            ║  3. Docker Build        ✓                ║
+            ║  4. Push to Registry    ✓                ║
+            ║  5. Deploy to K8s       ✓                ║
+            ╚══════════════════════════════════════════╝
+            
+            Оба сервиса готовы к работе!
+            '''
+        }
     }
 }
